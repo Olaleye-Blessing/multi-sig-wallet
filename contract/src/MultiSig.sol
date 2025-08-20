@@ -5,12 +5,14 @@ pragma solidity ^0.8.13;
 error Initialization(string reason);
 error NotOwner();
 error InvalidTransaction(string reason);
-error RequestAlreadyCancelled();
+error TransactionAlreadyCancelled();
+error TransactionNotConfirmedYet();
 
 event TransactionExecuted(address indexed sender, uint256 indexed id, address to);
 event TransactionSubmitted(address indexed sender, uint256 indexed id, address to);
 event TransactionConfirmed(address indexed sender, uint256 indexed id);
 event TransactionRevoked(address indexed revoker, uint256 indexed id);
+event TransactionRevocationCancelled(address indexed revoker, uint256 indexed id);
 event TransactionCancelled(uint256 indexed id);
 
 contract MultiSig {
@@ -135,12 +137,12 @@ contract MultiSig {
     _executeTransaction(transactions[_transactionId], _transactionId);
   }
 
-  function requestCancellations (uint256 _id) external onlyOwners {
+  function requestCancellation (uint256 _id) external onlyOwners {
     Transaction storage transaction = transactions[_id];
 
     if (transaction.executed) revert InvalidTransaction("Transaction has been executed");
 
-    if (transactionCancellations[_id][msg.sender]) revert RequestAlreadyCancelled();
+    if (transactionCancellations[_id][msg.sender]) revert TransactionAlreadyCancelled();
 
     transactionCancellations[_id][msg.sender] = true;
     transaction.cancellations += 1;
@@ -148,6 +150,21 @@ contract MultiSig {
     if (transaction.cancellations >= minConfirmations) {
       _cancelTransaction(_id);
     }
+  }
+
+  function revokeCancellation (uint256 _id) external onlyOwners {
+    Transaction storage transaction = transactions[_id];
+
+    if (!transactionCancellations[_id][msg.sender]) revert TransactionNotConfirmedYet();
+
+    if (transaction.executed) revert InvalidTransaction("Transaction has been executed");
+
+    if (transaction.cancelled) revert InvalidTransaction("Transaction has been cancelled");
+
+    transactions[_id].cancellations -= 1;
+    transactionCancellations[_id][msg.sender] = false;
+
+    emit TransactionRevocationCancelled(msg.sender, _id);
   }
 
   function getOwnersCount() external view returns (uint256) {
