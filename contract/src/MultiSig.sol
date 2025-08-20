@@ -2,11 +2,15 @@
 
 pragma solidity ^0.8.13;
 
-error Initialization(string reason);
 error NotOwner();
 error InvalidTransaction(string reason);
 error TransactionAlreadyCancelled();
 error TransactionNotConfirmedYet();
+error AddressZeroNotAllowed();
+error DuplicateOwner();
+error MinimumOfOneConfirmations();
+error MinConfirmationsGreaterThanOwners();
+error CanOnlyBeCalledByContract();
 
 event TransactionExecuted(address indexed sender, uint256 indexed id, address to);
 event TransactionSubmitted(address indexed sender, uint256 indexed id, address to);
@@ -14,6 +18,7 @@ event TransactionConfirmed(address indexed sender, uint256 indexed id);
 event TransactionRevoked(address indexed revoker, uint256 indexed id);
 event TransactionRevocationCancelled(address indexed revoker, uint256 indexed id);
 event TransactionCancelled(uint256 indexed id);
+event NewOwnerAdded(address newOwner, uint256 newMinConfirmations);
 
 contract MultiSig {
   struct Transaction {
@@ -37,14 +42,14 @@ contract MultiSig {
   mapping (uint256 transactionId => mapping (address owner => bool cancelled)) private transactionCancellations;
 
   constructor (address[] memory _owners, uint256 _minConfirmations) {
-    if (_minConfirmations == 0) revert Initialization("There must be at least 1 minimum confirmations");
-    if (_minConfirmations > _owners.length) revert Initialization("Owners must be more than confirmations");
+    if (_minConfirmations == 0) revert MinimumOfOneConfirmations();
+    if (_minConfirmations > _owners.length) revert MinConfirmationsGreaterThanOwners();
 
     uint256 ownerIndex = 0;
     uint256 totalOnwers = _owners.length;
     for (ownerIndex; ownerIndex < totalOnwers;) {
-      if (_owners[ownerIndex] == address(0)) revert Initialization("Address zero is not allowed");
-      if (isOwners[_owners[ownerIndex]]) revert Initialization("Duplicate owner is not allowed");
+      if (_owners[ownerIndex] == address(0)) revert AddressZeroNotAllowed();
+      if (isOwners[_owners[ownerIndex]]) revert DuplicateOwner();
 
       owners.push(_owners[ownerIndex]);
       isOwners[_owners[ownerIndex]] = true;
@@ -71,7 +76,7 @@ contract MultiSig {
     }
   }
 
-  function submitTransaction(address _to, bytes calldata _data) external payable onlyOwners returns (uint256 transactionId) {
+  function submitTransaction(address _to, bytes memory _data) public payable onlyOwners returns (uint256 transactionId) {
     if (_to == address(0)) revert InvalidTransaction("Zero address not allowed");
     transactionId = transactions.length;
 
@@ -165,6 +170,33 @@ contract MultiSig {
     transactionCancellations[_id][msg.sender] = false;
 
     emit TransactionRevocationCancelled(msg.sender, _id);
+  }
+
+  function addNewOwner (address _owner, uint256 _minConfirmations) external {
+    if (_owner == address(0)) revert AddressZeroNotAllowed();
+    if (isOwners[_owner]) revert DuplicateOwner();
+
+    if (_minConfirmations == 0) revert MinimumOfOneConfirmations();
+
+    submitTransaction(address(this), abi.encodeWithSignature("executeAddOwner(address,uint256)", _owner, _minConfirmations));
+  }
+
+  function executeAddOwner (address _owner, uint256 _minConfirmations) external {
+    if (msg.sender != address(this)) revert CanOnlyBeCalledByContract();
+
+    if (_owner == address(0)) revert AddressZeroNotAllowed();
+    if (isOwners[_owner]) revert DuplicateOwner();
+
+    if (_minConfirmations == 0) revert MinimumOfOneConfirmations();
+
+    address[] memory _owners = owners;
+    if (_minConfirmations > _owners.length + 1) revert MinConfirmationsGreaterThanOwners();
+
+    isOwners[_owner] = true;
+    owners.push(_owner);
+    minConfirmations = _minConfirmations;
+
+    emit NewOwnerAdded(_owner, _minConfirmations);
   }
 
   function getOwnersCount() external view returns (uint256) {
