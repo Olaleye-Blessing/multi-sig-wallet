@@ -1,39 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.26;
 
-error NotOwner();
-error InvalidTransaction(string reason);
-error TransactionAlreadyCancelled();
-error TransactionNotConfirmedYet();
-error AddressZeroNotAllowed();
-error DuplicateOwner();
-error MinimumOfOneConfirmations();
-error MinConfirmationsGreaterThanOwners();
-error CanOnlyBeCalledByContract();
+import {IMultiSig} from "./Interface.sol";
 
-event TransactionExecuted(address indexed sender, uint256 indexed id, address to);
-event TransactionSubmitted(address indexed sender, uint256 indexed id, address to);
-event TransactionConfirmed(address indexed sender, uint256 indexed id);
-event TransactionRevoked(address indexed revoker, uint256 indexed id);
-event TransactionRevocationCancelled(address indexed revoker, uint256 indexed id);
-event TransactionCancelled(uint256 indexed id);
-event NewOwnerAdded(address newOwner, uint256 newMinConfirmations);
-
-contract MultiSig {
-  struct Transaction {
-    uint256 id;
-    uint256 value;
-    uint256 confirmations;
-    uint256 cancellations;
-    uint256 timestamp;
-    bool executed;
-    bool cancelled;
-    address sender;
-    address to;
-    bytes data;
-  }
-
+contract MultiSig is IMultiSig {
   mapping (address owner => bool) private isOwners;
   address[] private owners;
   Transaction[] private transactions;
@@ -42,14 +13,14 @@ contract MultiSig {
   mapping (uint256 transactionId => mapping (address owner => bool cancelled)) private transactionCancellations;
 
   constructor (address[] memory _owners, uint256 _minConfirmations) {
-    if (_minConfirmations == 0) revert MinimumOfOneConfirmations();
-    if (_minConfirmations > _owners.length) revert MinConfirmationsGreaterThanOwners();
+    if (_minConfirmations == 0) revert MultiSig__MinimumOfOneConfirmations();
+    if (_minConfirmations > _owners.length) revert MultiSig__MinConfirmationsGreaterThanOwners();
 
     uint256 ownerIndex = 0;
     uint256 totalOnwers = _owners.length;
     for (ownerIndex; ownerIndex < totalOnwers;) {
-      if (_owners[ownerIndex] == address(0)) revert AddressZeroNotAllowed();
-      if (isOwners[_owners[ownerIndex]]) revert DuplicateOwner();
+      if (_owners[ownerIndex] == address(0)) revert MultiSig__AddressZeroNotAllowed();
+      if (isOwners[_owners[ownerIndex]]) revert MultiSig__DuplicateOwner();
 
       owners.push(_owners[ownerIndex]);
       isOwners[_owners[ownerIndex]] = true;
@@ -63,21 +34,21 @@ contract MultiSig {
   }
 
   modifier onlyOwners() {
-    if (!isOwners[msg.sender]) revert NotOwner();
+    if (!isOwners[msg.sender]) revert MultiSig__NotOwner();
 
     _;
   }
 
   modifier transactionExist (uint256 id) {
     if (id >= transactions.length) {
-      revert InvalidTransaction("Transaction does not exist.");
+      revert MultiSig__InvalidTransaction("Transaction does not exist.");
     } else {
       _;
     }
   }
 
   function submitTransaction(address _to, bytes memory _data) public payable onlyOwners returns (uint256 transactionId) {
-    if (_to == address(0)) revert InvalidTransaction("Zero address not allowed");
+    if (_to == address(0)) revert MultiSig__InvalidTransaction("Zero address not allowed");
     transactionId = transactions.length;
 
     Transaction storage transaction = transactions.push();
@@ -96,15 +67,15 @@ contract MultiSig {
 
   function confirmTransaction(uint256 _id) external onlyOwners() transactionExist(_id) {
     if (transactionConfirmations[_id][msg.sender]) {
-      revert InvalidTransaction("Transaction has been confirmed");
+      revert MultiSig__InvalidTransaction("Transaction has been confirmed");
     }
 
     if (transactions[_id].executed) {
-      revert InvalidTransaction("Transaction has been executed");
+      revert MultiSig__InvalidTransaction("Transaction has been executed");
     }
 
     if (transactions[_id].cancelled) {
-      revert InvalidTransaction("Transaction has been cancelled");
+      revert MultiSig__InvalidTransaction("Transaction has been cancelled");
     }
 
     transactionConfirmations[_id][msg.sender] = true;
@@ -119,17 +90,17 @@ contract MultiSig {
 
   function revokeConfirmation(uint256 _id) external onlyOwners transactionExist(_id) {
     if (!transactionConfirmations[_id][msg.sender]) {
-      revert InvalidTransaction("Transaction has not been confirmed");
+      revert MultiSig__InvalidTransaction("Transaction has not been confirmed");
     }
 
     Transaction storage transaction = transactions[_id];
 
     if (transaction.executed) {
-      revert InvalidTransaction("Transaction has been executed");
+      revert MultiSig__InvalidTransaction("Transaction has been executed");
     }
 
     if (transactions[_id].cancelled) {
-      revert InvalidTransaction("Transaction has been cancelled");
+      revert MultiSig__InvalidTransaction("Transaction has been cancelled");
     }
 
     transaction.confirmations -= 1;
@@ -145,9 +116,9 @@ contract MultiSig {
   function requestCancellation (uint256 _id) external onlyOwners {
     Transaction storage transaction = transactions[_id];
 
-    if (transaction.executed) revert InvalidTransaction("Transaction has been executed");
+    if (transaction.executed) revert MultiSig__InvalidTransaction("Transaction has been executed");
 
-    if (transactionCancellations[_id][msg.sender]) revert TransactionAlreadyCancelled();
+    if (transactionCancellations[_id][msg.sender]) revert MultiSig__TransactionAlreadyCancelled();
 
     transactionCancellations[_id][msg.sender] = true;
     transaction.cancellations += 1;
@@ -160,11 +131,11 @@ contract MultiSig {
   function revokeCancellation (uint256 _id) external onlyOwners {
     Transaction storage transaction = transactions[_id];
 
-    if (!transactionCancellations[_id][msg.sender]) revert TransactionNotConfirmedYet();
+    if (!transactionCancellations[_id][msg.sender]) revert MultiSig__TransactionNotConfirmedYet();
 
-    if (transaction.executed) revert InvalidTransaction("Transaction has been executed");
+    if (transaction.executed) revert MultiSig__InvalidTransaction("Transaction has been executed");
 
-    if (transaction.cancelled) revert InvalidTransaction("Transaction has been cancelled");
+    if (transaction.cancelled) revert MultiSig__InvalidTransaction("Transaction has been cancelled");
 
     transactions[_id].cancellations -= 1;
     transactionCancellations[_id][msg.sender] = false;
@@ -173,24 +144,24 @@ contract MultiSig {
   }
 
   function addNewOwner (address _owner, uint256 _minConfirmations) external {
-    if (_owner == address(0)) revert AddressZeroNotAllowed();
-    if (isOwners[_owner]) revert DuplicateOwner();
+    if (_owner == address(0)) revert MultiSig__AddressZeroNotAllowed();
+    if (isOwners[_owner]) revert MultiSig__DuplicateOwner();
 
-    if (_minConfirmations == 0) revert MinimumOfOneConfirmations();
+    if (_minConfirmations == 0) revert MultiSig__MinimumOfOneConfirmations();
 
     submitTransaction(address(this), abi.encodeWithSignature("executeAddOwner(address,uint256)", _owner, _minConfirmations));
   }
 
   function executeAddOwner (address _owner, uint256 _minConfirmations) external {
-    if (msg.sender != address(this)) revert CanOnlyBeCalledByContract();
+    if (msg.sender != address(this)) revert MultiSig__CanOnlyBeCalledByContract();
 
-    if (_owner == address(0)) revert AddressZeroNotAllowed();
-    if (isOwners[_owner]) revert DuplicateOwner();
+    if (_owner == address(0)) revert MultiSig__AddressZeroNotAllowed();
+    if (isOwners[_owner]) revert MultiSig__DuplicateOwner();
 
-    if (_minConfirmations == 0) revert MinimumOfOneConfirmations();
+    if (_minConfirmations == 0) revert MultiSig__MinimumOfOneConfirmations();
 
     address[] memory _owners = owners;
-    if (_minConfirmations > _owners.length + 1) revert MinConfirmationsGreaterThanOwners();
+    if (_minConfirmations > _owners.length + 1) revert MultiSig__MinConfirmationsGreaterThanOwners();
 
     isOwners[_owner] = true;
     owners.push(_owner);
@@ -204,15 +175,15 @@ contract MultiSig {
   }
 
   function _executeTransaction(Transaction storage transaction, uint256 transactionId) private {
-    if (transaction.cancelled) revert InvalidTransaction("Transaction has been cancelled");
-    if (transaction.executed) revert InvalidTransaction("Transaction has been executed");
-    if (transaction.confirmations < minConfirmations) revert InvalidTransaction("Minimum confirmation not met");
+    if (transaction.cancelled) revert MultiSig__InvalidTransaction("Transaction has been cancelled");
+    if (transaction.executed) revert MultiSig__InvalidTransaction("Transaction has been executed");
+    if (transaction.confirmations < minConfirmations) revert MultiSig__InvalidTransaction("Minimum confirmation not met");
 
     transaction.executed = true;
 
     (bool success, ) = transaction.to.call{value: transaction.value}(transaction.data);
 
-    if (!success) revert();
+    if (!success) revert MultiSig__ExecutionFailed();
 
     emit TransactionExecuted(transaction.sender, transactionId, transaction.to);
   }
