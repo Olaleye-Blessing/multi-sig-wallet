@@ -274,6 +274,42 @@ contract MultiSigTest is Test {
         multisig.revokeCancellationRequest(0);
     }
 
+    // ============ Min Confirmation Tests ============
+    function test_updateMinConfirmationsRevertWithZeroConfirmations() public {
+        vm.expectRevert(IMultiSig.MultiSig__MinConfirmationsMustBeAtLeastOne.selector);
+        vm.prank(OWNER_1);
+        multisig.updateMinConfirmations(0);
+    }
+
+    function test_updateMinConfirmationsRevertWithIfConfirmationsExceedsOwners() public {
+        uint256 totalOwners = multisig.getOwnersCount();
+        uint256 confirmations = totalOwners + 4;
+
+        vm.expectRevert(abi.encodeWithSelector(IMultiSig.MultiSig__MinConfirmationsExceedsOwnerCount.selector, confirmations, totalOwners));
+        vm.prank(OWNER_1);
+        multisig.updateMinConfirmations(confirmations);
+    }
+
+    function test_executeUpdateMinConfirmationsSuccessfully() public {
+        uint256 oldConfirmations = multisig.getMinConfirmations();
+        uint256 newConfirmations = oldConfirmations - 1;
+
+        vm.prank(OWNER_1);
+        multisig.updateMinConfirmations(newConfirmations);
+
+        vm.prank(OWNER_2);
+        multisig.confirmTransaction(0);
+
+        vm.expectEmit(true, true, true, true, address(multisig));
+        emit IMultiSig.MinConfirmationsUpdated(oldConfirmations, newConfirmations);
+
+        vm.prank(OWNER_3);
+        multisig.confirmTransaction(0);
+
+        assertEq(multisig.getMinConfirmations(), newConfirmations);
+        assertNotEq(multisig.getMinConfirmations(), oldConfirmations);
+    }
+
     // ============ Add Owner Tests ============
 
     function test_addNewOwnerInitiatesTransaction() public {

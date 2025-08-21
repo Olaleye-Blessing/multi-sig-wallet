@@ -77,6 +77,16 @@ contract MultiSig is IMultiSig {
     }
 
     /**
+     * @notice Restricts function access to this contract only
+     * @dev Reverts with MultiSig__OnlyCallableByContract if caller is not this contract
+     */
+    modifier onlyCallableByContract() {
+        if (msg.sender != address(this)) revert MultiSig__OnlyCallableByContract(msg.sender);
+
+        _;
+    }
+
+    /**
      * @notice Validates that a transaction exists
      * @dev Reverts with TransactionDoesNotExist if transaction ID is invalid
      * @param id Transaction ID to validate
@@ -259,6 +269,27 @@ contract MultiSig is IMultiSig {
         emit CancellationRequestRevoked(msg.sender, _id, transaction.cancellations);
     }
 
+    function updateMinConfirmations(uint256 _confirmations) external onlyOwners {
+        if (_confirmations == 0) revert MultiSig__MinConfirmationsMustBeAtLeastOne();
+
+        uint256 totalOwners = owners.length;
+        if (_confirmations > totalOwners) revert MultiSig__MinConfirmationsExceedsOwnerCount(_confirmations, totalOwners);
+
+        submitTransaction(address(this), abi.encodeWithSignature("executeUpdateMinConfirmations(uint256)", _confirmations));
+    }
+
+    function executeUpdateMinConfirmations(uint256 _confirmations) external onlyCallableByContract {
+        if (_confirmations == 0) revert MultiSig__MinConfirmationsMustBeAtLeastOne();
+        
+        uint256 totalOwners = owners.length;
+        if (_confirmations > totalOwners) revert MultiSig__MinConfirmationsExceedsOwnerCount(_confirmations, totalOwners);
+
+        uint256 oldMinConfirmations = minConfirmations;
+        minConfirmations = _confirmations;
+
+        emit MinConfirmationsUpdated(oldMinConfirmations, _confirmations);
+    }
+
     /**
      * @notice Initiates the process to add a new owner
      * @dev Submits a transaction to call executeAddOwner with the new owner details
@@ -292,9 +323,7 @@ contract MultiSig is IMultiSig {
      * - New minimum confirmations must be at least 1
      * - New minimum confirmations must not exceed total owners after addition
      */
-    function executeAddOwner(address _owner, uint256 _minConfirmations) external {
-        if (msg.sender != address(this)) revert MultiSig__OnlyCallableByContract(msg.sender);
-
+    function executeAddOwner(address _owner, uint256 _minConfirmations) external onlyCallableByContract {
         if (_owner == address(0)) revert MultiSig__ZeroAddressNotAllowed();
         if (isOwners[_owner]) revert MultiSig__AddressAlreadyOwner(_owner);
         if (_minConfirmations == 0) revert MultiSig__MinConfirmationsMustBeAtLeastOne();
