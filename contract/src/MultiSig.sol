@@ -340,6 +340,50 @@ contract MultiSig is IMultiSig {
         emit OwnerAdded(_owner, _minConfirmations, newOwnerCount);
     }
 
+    function removeOwner(address _owner, uint256 _minConfirmations) external onlyOwners {
+        if (_owner == address(0)) revert MultiSig__ZeroAddressNotAllowed();
+        if (!isOwners[_owner]) revert MultiSig__AddressNotAnOwner(_owner);
+        if (_minConfirmations == 0) revert MultiSig__MinConfirmationsMustBeAtLeastOne();
+
+        submitTransaction(address(this), abi.encodeWithSignature("executeRemoveOwner(address,uint256)", _owner, _minConfirmations));
+    }
+
+    function executeRemoveOwner(address _owner, uint256 _minConfirmations) external onlyCallableByContract {
+        if (_owner == address(0)) revert MultiSig__ZeroAddressNotAllowed();
+        if (!isOwners[_owner]) revert MultiSig__AddressNotAnOwner(_owner);
+        if (_minConfirmations == 0) revert MultiSig__MinConfirmationsMustBeAtLeastOne();
+
+        uint256 newOwnerCount = owners.length - 1;
+
+        if (_minConfirmations > newOwnerCount) {
+            revert MultiSig__MinConfirmationsExceedsOwnerCount(_minConfirmations, newOwnerCount);
+        }
+
+        address[] memory newOwners = owners;
+        uint256 totalOwners = newOwnerCount + 1;
+        uint256 ownerIndex = 0;
+        uint256 ownerPosition = 0;
+
+        for (ownerIndex; ownerIndex < totalOwners;) {
+            if (newOwners[ownerIndex] == _owner) {
+                ownerPosition = ownerIndex;
+                break;
+            }
+
+            unchecked {
+                ownerIndex++;
+            }
+        }
+        newOwners[ownerPosition] = newOwners[totalOwners - 1];
+        owners = newOwners;
+        owners.pop();
+
+        isOwners[_owner] = false;
+        minConfirmations = _minConfirmations;
+
+        emit OwnerRemoved(_owner, _minConfirmations, totalOwners - 1);
+    }
+
     /**
      * @notice Returns the total number of owners
      * @dev Public view function to get the current owner count

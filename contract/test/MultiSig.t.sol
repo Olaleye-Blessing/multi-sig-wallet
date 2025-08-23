@@ -384,6 +384,34 @@ contract MultiSigTest is Test {
         multisig.executeAddOwner(newOwner, 2);
     }
 
+    // ============ Remove Owner Tests ============
+
+    function test_removeOwnerInitiatesTransaction() public {
+        address OWNER_4 = makeAddr("OWNER_4");
+        address OWNER_5 = makeAddr("OWNER_5");
+        address OWNER_6 = makeAddr("OWNER_6");
+
+        _addOwner(OWNER_4, 0);
+        _addOwner(OWNER_5, 1);
+        _addOwner(OWNER_6, 2);
+
+        uint256 totalOwners = multisig.getOwnersCount();
+
+        assertEq(totalOwners, 6);
+
+        vm.prank(OWNER_1);
+        multisig.removeOwner(OWNER_6, 3);
+
+        vm.prank(OWNER_1);
+        multisig.confirmTransaction(3);
+
+        vm.prank(OWNER_2);
+        multisig.confirmTransaction(3);
+
+        assertEq(multisig.getOwnersCount(), 5);
+
+    }
+
     // ============ ETH Transfer Tests ============
 
     function test_transferEtherSuccessfully() public {
@@ -580,5 +608,40 @@ contract MultiSigTest is Test {
         multisig.requestCancellation(_id);
         vm.prank(OWNER_3);
         multisig.requestCancellation(_id);
+    }
+
+    function _addOwner(address _newOwner, uint256 _transactionToConfirmId) private {
+        uint256 newMinConfirmations = 2;
+
+        vm.prank(OWNER_1);
+        multisig.addNewOwner(_newOwner, newMinConfirmations);
+
+        vm.prank(OWNER_2);
+        multisig.confirmTransaction(_transactionToConfirmId);
+
+        vm.prank(OWNER_3);
+        multisig.confirmTransaction(_transactionToConfirmId);
+
+        assertEq(multisig.getOwnersCount(), multisig.getOwnersCount());
+        assertEq(multisig.getMinConfirmations(), newMinConfirmations);
+    }
+
+    function _updateMinConfirmationsAfterAddingOwners(uint256 newConfirmations, uint256 transactionId) private {
+        uint256 oldConfirmations = multisig.getMinConfirmations(); // this is 2 ==> gotten from _addOwner function
+
+        vm.prank(OWNER_1);
+        multisig.updateMinConfirmations(newConfirmations);
+
+        vm.prank(OWNER_2);
+        multisig.confirmTransaction(transactionId);
+
+        vm.expectEmit(true, true, true, true, address(multisig));
+        emit IMultiSig.MinConfirmationsUpdated(oldConfirmations, newConfirmations);
+
+        vm.prank(OWNER_3);
+        multisig.confirmTransaction(transactionId);
+
+        assertEq(multisig.getMinConfirmations(), newConfirmations);
+        assertNotEq(multisig.getMinConfirmations(), oldConfirmations);
     }
 }

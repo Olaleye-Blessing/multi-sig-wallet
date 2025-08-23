@@ -121,6 +121,16 @@ interface IMultiSig {
         uint256 indexed transactionId,
         uint256 cancellationsReceived
     );
+
+    /**
+    * @notice Emitted when the minimum confirmations is updated.
+    * @param oldMinConfirmations The old min confirmations needed to execute a transaction
+    * @param newMinConfirmations The new min confirmations needed to execute a transaction
+    */
+    event MinConfirmationsUpdated(
+        uint256 oldMinConfirmations,
+        uint256 newMinConfirmations
+    );
     
     /**
      * @notice Emitted when a new owner is added to the multi-sig
@@ -130,6 +140,18 @@ interface IMultiSig {
      */
     event OwnerAdded(
         address indexed newOwner, 
+        uint256 newMinConfirmations,
+        uint256 totalOwners
+    );
+
+    /**
+     * @notice Emitted when an owner is removed from the multi-sig
+     * @param oldOwner Address of the owner to remove
+     * @param newMinConfirmations Updated minimum confirmations requirement
+     * @param totalOwners New total number of owners
+     */
+    event OwnerRemoved(
+        address indexed oldOwner, 
         uint256 newMinConfirmations,
         uint256 totalOwners
     );
@@ -184,6 +206,12 @@ interface IMultiSig {
      * @param duplicateAddress Address that's already an owner
      */
     error MultiSig__AddressAlreadyOwner(address duplicateAddress);
+
+    /**
+     * @notice Thrown when trying to get/remove an address that is not an owner
+     * @param unknownAddress The unknown address
+     */
+    error MultiSig__AddressNotAnOwner(address unknownAddress);
     
     /**
      * @notice Thrown when minimum confirmations is set to zero
